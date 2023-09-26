@@ -14,6 +14,13 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 
+builder.Services.AddHttpClient("AllowUntrustedRootHttpClient", client => { }).ConfigurePrimaryHttpMessageHandler(() =>
+{
+    var handler = new HttpClientHandler();
+    handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => { return true; };
+    return handler;
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

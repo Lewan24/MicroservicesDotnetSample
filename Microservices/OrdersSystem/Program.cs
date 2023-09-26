@@ -1,3 +1,5 @@
+using Infrastructure;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -6,6 +8,9 @@ builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddCustomCorsConfiguration(new[]{"https://localhost:7163"});
+builder.Services.AddCustomCorsHeaderFilter("https://localhost:7163");
 
 var app = builder.Build();
 

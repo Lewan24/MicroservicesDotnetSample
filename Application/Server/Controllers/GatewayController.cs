@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.Text;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Application.Server.Controllers;
@@ -12,67 +13,87 @@ public class GatewayController : ControllerBase
 
     public GatewayController(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
-        _httpClient = httpClientFactory.CreateClient();
+        _httpClient = httpClientFactory.CreateClient("AllowUntrustedRootHttpClient");
         _configuration = configuration;
     }
 
+    #region Auth Service
+    #region GET
     [HttpGet]
     [Route("auth/{*apipath}")]
-    public async Task<IActionResult> HandleAuthGet(string apipath)
-    {
-        var microserviceUrl = GetMicroserviceUrlBasedOnName(Microservices.Auth);
-
-        return await RedirectRequestToMicroservice(microserviceUrl, $"{Microservices.Auth}/{apipath}");
-    }
+    public async Task<IActionResult> HandleAuthGet(string apipath) => 
+        await RedirectGetRequestToMicroservice($"{Microservices.Auth}/{apipath}", Microservices.Auth);
 
     [HttpGet]
     [Authorize]
     [Route("auth/authorized/{*apipath}")]
-    public async Task<IActionResult> HandleAuthAuthorizedGet(string apipath)
-    {
-        var microserviceUrl = GetMicroserviceUrlBasedOnName(Microservices.Auth);
-
-        return await RedirectRequestToMicroservice(microserviceUrl, $"{Microservices.Auth}/authorized/{apipath}");
-    }
-
+    public async Task<IActionResult> HandleGetAuthAuthorized(string apipath) => 
+        await RedirectGetRequestToMicroservice($"{Microservices.Auth}/authorized/{apipath}", Microservices.Auth);
+    #endregion
+    #endregion
+    
+    #region OrderSystem Service
+    #region GET
     [HttpGet]
     [Route("ordersystem/{*apipath}")]
-    public async Task<IActionResult> HandleOrderSystemGet(string? token, string apipath)
+    public async Task<IActionResult> HandleGetOrderSystem(string apipath) => 
+        await RedirectGetRequestToMicroservice($"{Microservices.OrdersSystem}/{apipath}", Microservices.OrdersSystem);
+    #endregion
+    #region POST
+    [HttpPost]
+    [Route("orderssystem/authorized/{*apipath}")]
+    public async Task<IActionResult> HandlePostOrderSystem(string apipath, [FromBody] object? data) => 
+        await RedirectPostRequestToMicroservice($"{Microservices.OrdersSystem}/authorized/{apipath}", Microservices.OrdersSystem, data);
+    #endregion
+    #endregion
+    
+    private async Task<IActionResult> RedirectGetRequestToMicroservice(string? apiPath, Microservices microservice)
     {
-        var microserviceUrl = GetMicroserviceUrlBasedOnName(Microservices.OrdersSystem);
+        var microserviceUrl = GetMicroserviceUrlBasedOnName(microservice);
+        
+        if (microserviceUrl is null) return NotFound();
+        
+        var queryString = HttpContext.Request.QueryString.ToString();
 
-        return await RedirectRequestToMicroservice(microserviceUrl, $"{Microservices.OrdersSystem}/{apipath}");
+        var httpRequestMessage = new HttpRequestMessage
+        {
+            Method = HttpMethod.Get,
+            RequestUri = new Uri($"{microserviceUrl}/api/{apiPath}{queryString}")
+        };
+
+        //httpRequestMessage.Headers.Add("X-Client-Certificate", Convert.ToBase64String(_certificate.RawData));
+        
+        using var response = await _httpClient.SendAsync(httpRequestMessage);
+
+        if (!response.IsSuccessStatusCode) return StatusCode((int)response.StatusCode);
+        var content = await response.Content.ReadAsStringAsync();
+            
+        return Ok(content);
     }
-
-    private async Task<IActionResult> RedirectRequestToMicroservice(string? microserviceUrl, string? apiPath)
+    
+    private async Task<IActionResult> RedirectPostRequestToMicroservice(string? apiPath, Microservices microservice, object? data)
     {
-        if (microserviceUrl is not null)
-        {
-            var queryString = HttpContext.Request.QueryString.ToString();
-
-            var request = new HttpRequestMessage
-            {
-                Method = HttpMethod.Get,
-                RequestUri = new Uri($"{microserviceUrl}/api/{apiPath}{queryString}")
-            };
-
-            using (var response = await _httpClient.SendAsync(request))
-            {
-                if (response.IsSuccessStatusCode)
-                {
-                    var content = await response.Content.ReadAsStringAsync();
-                    return Ok(content);
-                }
-                else
-                {
-                    return StatusCode((int)response.StatusCode);
-                }
-            }
-        }
-        else
-        {
+        var microserviceUrl = GetMicroserviceUrlBasedOnName(microservice);
+        if (microserviceUrl is null) 
             return NotFound();
-        }
+
+        if (data is null)
+            return BadRequest("Empty data");
+        
+        var request = new HttpRequestMessage
+        {
+            Method = HttpMethod.Post,
+            RequestUri = new Uri($"{microserviceUrl}/api/{apiPath}"),
+            Content = new StringContent(data.ToString()!, Encoding.UTF8, "application/json")
+        };
+
+        using var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode) 
+            return StatusCode((int)response.StatusCode);
+        
+        var content = await response.Content.ReadAsStringAsync();
+        
+        return Ok(content);
     }
 
     private string? GetMicroserviceUrlBasedOnName(Microservices request) => request switch
@@ -82,7 +103,7 @@ public class GatewayController : ControllerBase
         _ => null
     };
 
-    public enum Microservices
+    private enum Microservices
     {
         Auth,
         OrdersSystem
