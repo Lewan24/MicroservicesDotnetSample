@@ -9,3 +9,7 @@ Microservices does not have any auth methods or validation. Everything is happen
 This sample is mainly for my learning and testing purposes. I need any specific solutions for my private projects. And that's the one of them.
 
 For now the gateway handles only HttpGet methods, but its like just copy get redirect and change to HttpPost.
+
+## Logic scheme and achritecture
+
+![Project scheme](https://github.com/Lewan24/MicroservicesDotnetSample/blob/master/Architecture_v1.png)
